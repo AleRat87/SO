@@ -47,7 +47,7 @@ void get_bmp_info(const char *filename)
     close(fd);
 }
 
-void process_file(const char *filename, const char *output_file)
+void process_file(const char *filename)
 {
 
     // Obținem dimensiunea fișierului folosind funcția stat
@@ -85,46 +85,85 @@ void process_file(const char *filename, const char *output_file)
             (file_stat.st_mode & S_IXOTH) ? 'X' : '-');
     
     char stats[1024];
-    int stat_file = open(output_file, O_WRONLY | O_APPEND);
-    if (stat_file == -1) {
-        perror("Eroare deschidere fisier de statistici");
-        return;
-    }
+    // int stat_file = open(output_file, O_WRONLY | O_APPEND);
+    // if (stat_file == -1) {
+    //     perror("Eroare deschidere fisier de statistici");
+    //     return;
+    // }
 
     if (S_ISLNK(file_stat.st_mode)) {
+        // Deschidem fisierul statistica_link.txt pentru scriere
+        int output_link = open("statistica_link.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (output_link == -1) {
+            perror("Eroare la crearea fisierului statistica.txt");
+            return;
+        }
         char target[1024];
-        
+	      struct stat leg_stat;
+        if (stat(filename, &leg_stat) == -1) {
+            perror("Eroare la obtinerea informatiilor despre fisier");
+        	  return;
+    	  }
+
         ssize_t len = readlink(filename, target, sizeof(target) - 1);
         if (len != -1) {
             target[len] = '\0';
-            sprintf(stats, "nume legatura: %s\ndimensiune legatura: %ld\ndimensiune fisier target: %ld\ndrepturi de acces user legatura: %s\ndrepturi de acces grup legatura: %s\ndrepturi de acces altii legatura: %s\n", filename, file_stat.st_size, len, permissions_user, permissions_group, permissions_other);
+            sprintf(stats, "nume legatura: %s\ndimensiune legatura: %ld\ndimensiune fisier target: %ld\ndrepturi de acces user legatura: %s\ndrepturi de acces grup legatura: %s\ndrepturi de acces altii legatura: %s\n", filename, file_stat.st_size, leg_stat.st_size, permissions_user, permissions_group, permissions_other);
         }
+        if (write(output_link, stats, strlen(stats)) == -1) {
+            perror("Eroare scriere in fisier de statistici");
+        }
+        close(output_link);
     }else if (S_ISREG(file_stat.st_mode))
     {
         // Verificăm dacă fișierul are extensia ".bmp"
         if (is_bmp_file(filename)) {
+            // Deschidem fisierul statistica_bmp.txt pentru scriere
+            int output_bmp = open("statistica_bmp.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            if (output_bmp == -1) {
+                perror("Eroare la crearea fisierului statistica.txt");
+                return;
+            }
             get_bmp_info(filename);
             sprintf(stats, "nume fisier: %s\ninaltime: %u\nlungime: %u\ndimensiune: %ld\nidentificatorul utilizatorului: %d\ntimpul ultimei modificari: %s\ncontorul de legaturi: %ld\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, info_header.height, info_header.width, (long)file_stat.st_size, file_stat.st_uid, time_string, file_stat.st_nlink, permissions_user, permissions_group, permissions_other);
+            if (write(output_bmp, stats, strlen(stats)) == -1) {
+                perror("Eroare scriere in fisier de statistici");
+            }
+            close(output_bmp);
         }
         else {
-            //fisier obisnuit
+            // Deschidem fisierul statistica_fisier.txt pentru scriere
+            int output_fisier = open("statistica_fisier.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            if (output_fisier == -1) {
+                perror("Eroare la crearea fisierului statistica.txt");
+                return;
+            }
             sprintf(stats, "nume fisier: %s\ndimensiune: %ld\nidentificatorul utilizatorului: %d\ntimpul ultimei modificari: %s\ncontorul de legaturi: %ld\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, file_stat.st_size, file_stat.st_uid, time_string, file_stat.st_nlink, permissions_user, permissions_group, permissions_other);
+            if (write(output_fisier, stats, strlen(stats)) == -1) {
+                perror("Eroare scriere in fisier de statistici");
+            }
+            close(output_fisier);
         }
     }else if (S_ISDIR(file_stat.st_mode))
     {
+        // Deschidem fisierul statistica_folder.txt pentru scriere
+        int output_folder = open("statistica_folder.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+        if (output_folder == -1) {
+            perror("Eroare la crearea fisierului statistica.txt");
+            return;
+        }
         sprintf(stats, "nume director: %s\nidentificatorul utilizatorului: %d\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, file_stat.st_uid, permissions_user, permissions_group, permissions_other);
+        if (write(output_folder, stats, strlen(stats)) == -1) {
+            perror("Eroare scriere in fisier de statistici");
+        }
+        close(output_folder);
     }else{
-        //Nu se scrie nimic in fisierul statistica.txt
+        //Nu se scrie nimic 
     }
     
-    if (write(stat_file, stats, strlen(stats)) == -1) {
-        perror("Eroare scriere in fisier de statistici");
-    }
- 
-    close(stat_file);
 }
 
-void citire_director(const char *director, const char *output_file)
+void citire_director(const char *director)
 {
     DIR *dir;
     if((dir = opendir(director)) == NULL)
@@ -138,8 +177,8 @@ void citire_director(const char *director, const char *output_file)
     while((entry=readdir(dir))!=NULL)
     {
         if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0){
-	        sprintf(str, "%s/%s", director, entry->d_name);
-            process_file(str, output_file);
+	          sprintf(str, "%s/%s", director, entry->d_name);
+            process_file(str);
         }
     } 
 }
@@ -150,17 +189,6 @@ int main(int argc, char *argv[]) {
         printf("Usage: %s <fisier_intrare>\n", argv[0]);
         return 1;
     }
-
-    // Deschidem fisierul statistica.txt pentru scriere
-    int output_fd = open("statistica.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    if (output_fd == -1) {
-        perror("Eroare la crearea fisierului statistica.txt");
-        return 1;
-    }
-
-    // Inchidem fisierul statistica.txt
-    close(output_fd);
-    citire_director(argv[1], "statistica.txt");
-
+    citire_director(argv[1]);
     return 0;
 }
