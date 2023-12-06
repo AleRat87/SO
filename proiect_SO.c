@@ -34,7 +34,7 @@ char* extract_filename(const char *path)
 void get_bmp_info(const char *filename)
 {
     // Deschidem fisierul BMP
-    int fd = open(filename, O_RDONLY);
+    int fd = open(filename, O_RDWR);
     if (fd == -1) {
         perror("Eroare la deschiderea fisierului bmp");
         return;
@@ -104,14 +104,6 @@ void get_bmp_info(const char *filename)
 
 void process_file(const char *filename, const char *output_dir)
 {
-    DIR *dir;
-    if((dir = opendir(output_dir)) == NULL)
-    {
-        perror("Eroare deschidere director scriere");
-        exit(1);
-    }
-    pid_t pid = fork();
-    int status;
     int nr_linii = 0;
     // Obținem dimensiunea fișierului folosind funcția stat
     struct stat file_stat;
@@ -150,13 +142,8 @@ void process_file(const char *filename, const char *output_dir)
     char stats[1024];
     char *base = extract_filename(filename);
     char output_filename[1024];
-    sprintf(output_filename, "statistica_%s.txt", base);
-    if(pid < 0)
-    {
-        perror("Eroare fork\n");
-        exit(-1);
-    }else if(pid == 0)
-    {
+    sprintf(output_filename, "%s/statistica_%s.txt", output_dir, base);
+    
         if (S_ISLNK(file_stat.st_mode)) {
             // Deschidem fisierul statistica_link.txt pentru scriere
             int output_link = open(output_filename, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -176,8 +163,8 @@ void process_file(const char *filename, const char *output_dir)
                 target[len] = '\0';
                 sprintf(stats, "nume legatura: %s\ndimensiune legatura: %ld\ndimensiune fisier target: %ld\ndrepturi de acces user legatura: %s\ndrepturi de acces grup legatura: %s\ndrepturi de acces altii legatura: %s\n", filename, file_stat.st_size, leg_stat.st_size, permissions_user, permissions_group, permissions_other);
             }
-            nr_linii = write(output_link, stats, strlen(stats));
-            if (nr_linii == -1) {
+            nr_linii += 6;
+            if ((write(output_link, stats, strlen(stats))) == -1) {
                 perror("Eroare scriere in fisier de statistici");
             }
             close(output_link);
@@ -206,8 +193,8 @@ void process_file(const char *filename, const char *output_dir)
                 }
                 
                 sprintf(stats, "nume fisier: %s\ninaltime: %u\nlungime: %u\ndimensiune: %ld\nidentificatorul utilizatorului: %d\ntimpul ultimei modificari: %s\ncontorul de legaturi: %ld\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, info_header.height, info_header.width, (long)file_stat.st_size, file_stat.st_uid, time_string, file_stat.st_nlink, permissions_user, permissions_group, permissions_other);
-                nr_linii = write(output_bmp, stats, strlen(stats));
-                if ( nr_linii == -1) {
+                nr_linii += 10;
+                if ( (write(output_bmp, stats, strlen(stats))) == -1) {
                     perror("Eroare scriere in fisier de statistici");
                 }
                 close(output_bmp);
@@ -220,8 +207,8 @@ void process_file(const char *filename, const char *output_dir)
                     return;
                 }
                 sprintf(stats, "nume fisier: %s\ndimensiune: %ld\nidentificatorul utilizatorului: %d\ntimpul ultimei modificari: %s\ncontorul de legaturi: %ld\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, file_stat.st_size, file_stat.st_uid, time_string, file_stat.st_nlink, permissions_user, permissions_group, permissions_other);
-                nr_linii = write(output_fisier, stats, strlen(stats));
-                if (nr_linii == -1) {
+                nr_linii += 8;
+                if ((write(output_fisier, stats, strlen(stats))) == -1) {
                     perror("Eroare scriere in fisier de statistici");
                 }
                 close(output_fisier);
@@ -235,8 +222,8 @@ void process_file(const char *filename, const char *output_dir)
                 return;
             }
             sprintf(stats, "nume director: %s\nidentificatorul utilizatorului: %d\ndrepturi de acces user: %s\ndrepturi de acces grup: %s\ndrepturi de acces altii: %s\n", filename, file_stat.st_uid, permissions_user, permissions_group, permissions_other);
-            nr_linii = write(output_folder, stats, strlen(stats));
-            if (nr_linii == -1) {
+            nr_linii += 5;
+            if ((write(output_folder, stats, strlen(stats))) == -1) {
                 perror("Eroare scriere in fisier de statistici");
             }
             close(output_folder);
@@ -244,16 +231,8 @@ void process_file(const char *filename, const char *output_dir)
             //Nu se scrie nimic 
         }
         exit(nr_linii);
-    }else {
-        //daca e parinte
-        pid = wait(&status);
-        if(WIFEXITED(status))
-        {
-            printf("Child with id = %d exited with status code %d\n", pid, WEXITSTATUS(status));
-        }
-    }
+    
     free(base);            
-    closedir(dir);
     
 }
 
@@ -267,15 +246,36 @@ void citire_director(const char *director, const char *output_dir)
         exit(1);
     }
     struct dirent *entry;
-
+    pid_t pid;
+    int status;
     char str[1024];
     while((entry=readdir(dir))!=NULL)
     {
         if(strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0){
 	        sprintf(str, "%s/%s", director, entry->d_name);
-            process_file(str, output_dir);
+            pid = fork();
+            if(pid < 0)
+            {
+                perror("Eroare fork\n");
+                exit(-1);
+            }else if(pid == 0)
+            {
+                process_file(str, output_dir);
+            }
         }
     } 
+    while((pid = wait(&status)) != -1)
+    {
+        if(WIFEXITED(status))
+        {
+            printf("Child with id = %d exited with status code %d\n", pid, WEXITSTATUS(status));
+        }
+    }
+    if(closedir(dir) == -1)
+    {
+        perror("Eroare inchidere director");
+        exit(1);
+    }
 }
 
 int main(int argc, char *argv[]) {
